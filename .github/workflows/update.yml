@@ -1,0 +1,41 @@
+name: Update Crypto Watchlists
+
+on:
+  schedule:
+    - cron: '0 2 * * *'   # chaque nuit à 2h UTC
+  workflow_dispatch:        # bouton manuel dans GitHub
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+jobs:
+  fetch-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install requests
+
+      - name: Run watchlist fetcher
+        run: python fetch_watchlists.py
+
+      - name: Generate index HTML
+        run: python generate_index.py
+
+      - name: Commit updated watchlists
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add watchlists/ docs/
+          git diff --staged --quiet || git commit -m "🔄 Update watchlists $(date +'%Y-%m-%d')"
+          git push
