@@ -1,35 +1,43 @@
 """
-Crypto Watchlist Fetcher
+Crypto Watchlist Fetcher — CCXT edition
 Fetches all trading pairs from major exchanges and generates TradingView-compatible watchlist files.
 Exchanges: Binance, Bybit, OKX, Bitget, Kraken, KuCoin
 """
 
-import requests
+import ccxt
 import os
-import json
 from collections import defaultdict
 from datetime import datetime
 
-# ── Output directory ────────────────────────────────────────────────────────
+# ── Output directory ─────────────────────────────────────────────────────────
 OUTPUT_DIR = "watchlists"
 
-# ── Quote categorisation ─────────────────────────────────────────────────────
-USDT_VARIANTS  = {"USDT", "TUSD", "FDUSD"}
-USDC_VARIANTS  = {"USDC", "DAI", "BUSD"}
-FIAT_QUOTES    = {"USD", "EUR", "GBP", "AUD", "TRY"}
-CRYPTO_QUOTES  = {"BTC", "ETH", "BNB", "OKB", "HT", "KCS"}
+# ── Quote categorisation ──────────────────────────────────────────────────────
+USDT_VARIANTS = {"USDT", "TUSD", "FDUSD"}
+USDC_VARIANTS = {"USDC", "DAI", "BUSD"}
+FIAT_QUOTES   = {"USD", "EUR", "GBP", "AUD", "TRY"}
+CRYPTO_QUOTES = {"BTC", "ETH", "BNB", "OKB", "HT", "KCS"}
 
 def categorise_quote(quote: str) -> str:
     q = quote.upper().strip()
-    if q in USDT_VARIANTS:  return "usdt"
-    if q in USDC_VARIANTS:  return "usdc"
-    if q in FIAT_QUOTES:    return q.lower()
-    if q in CRYPTO_QUOTES:  return q.lower()
+    if q in USDT_VARIANTS: return "usdt"
+    if q in USDC_VARIANTS: return "usdc"
+    if q in FIAT_QUOTES:   return q.lower()
+    if q in CRYPTO_QUOTES: return q.lower()
     return "other"
 
-# ── File helpers ─────────────────────────────────────────────────────────────
-def write_watchlist(exchange: str, market: str, quote_cat: str, symbols: list[str]):
-    """Write a sorted, deduplicated watchlist .txt file."""
+# ── TradingView exchange prefixes ─────────────────────────────────────────────
+TV_PREFIX = {
+    "binance": "BINANCE",
+    "bybit":   "BYBIT",
+    "okx":     "OKX",
+    "bitget":  "BITGET",
+    "kraken":  "KRAKEN",
+    "kucoin":  "KUCOIN",
+}
+
+# ── File helpers ──────────────────────────────────────────────────────────────
+def write_watchlist(exchange: str, market: str, quote_cat: str, symbols: list):
     if not symbols:
         return
     folder = os.path.join(OUTPUT_DIR, exchange, market)
@@ -41,18 +49,51 @@ def write_watchlist(exchange: str, market: str, quote_cat: str, symbols: list[st
             f.write(sym + "\n")
     print(f"  ✅  {filepath}  ({len(set(symbols))} symbols)")
 
-def build_tv_symbol(exchange_prefix: str, raw: str) -> str:
-    """Return a TradingView-ready symbol string."""
-    return f"{exchange_prefix}:{raw}"
+def tv_symbol(exchange: str, base: str, quote: str, raw_symbol: str = None) -> str:
+    """Build a TradingView-compatible symbol string."""
+    prefix = TV_PREFIX.get(exchange, exchange.upper())
+    # Use raw symbol if provided (for futures/perps with special naming)
+    if raw_symbol:
+        # Remove / and : separators, keep alphanumeric + _ .
+        clean = raw_symbol.replace("/", "").replace(":", "").replace("-", "")
+        return f"{prefix}:{clean}"
+    return f"{prefix}:{base}{quote}"
 
-def get_json(url: str, params: dict = None, headers: dict = None):
+# ── Generic market fetcher ────────────────────────────────────────────────────
+def load_markets(exchange_id: str, options: dict = None) -> dict | None:
+    """Instantiate a CCXT exchange and load its markets."""
     try:
-        r = requests.get(url, params=params, headers=headers, timeout=15)
-        r.raise_for_status()
-        return r.json()
+        exchange_class = getattr(ccxt, exchange_id)
+        config = {
+            "enableRateLimit": True,
+            "options": options or {},
+        }
+        exchange = exchange_class(config)
+        markets = exchange.load_markets()
+        print(f"  📡  {exchange_id}: {len(markets)} markets loaded")
+        return markets
     except Exception as e:
-        print(f"  ⚠️  GET {url} failed: {e}")
+        print(f"  ⚠️  Failed to load {exchange_id}: {e}")
         return None
+
+# ── Market type helpers ───────────────────────────────────────────────────────
+def is_active(m: dict) -> bool:
+    return m.get("active", True)  # default True if not specified
+
+def market_type(m: dict) -> str:
+    """Return normalised market type string."""
+    t = m.get("type", "spot")
+    if m.get("linear")  and m.get("swap"):   return "perp_linear"
+    if m.get("inverse") and m.get("swap"):   return "perp_inverse"
+    if m.get("linear")  and m.get("future"): return "futures_linear"
+    if m.get("inverse") and m.get("future"): return "futures_inverse"
+    if m.get("option"):                       return "option"
+    if t == "spot":                           return "spot"
+    if t == "swap":
+        return "perp_linear" if m.get("linear") else "perp_inverse"
+    if t == "future":
+        return "futures_linear" if m.get("linear") else "futures_inverse"
+    return t
 
 # ════════════════════════════════════════════════════════════════════════════
 # BINANCE
@@ -60,59 +101,44 @@ def get_json(url: str, params: dict = None, headers: dict = None):
 def fetch_binance():
     print("\n📥 BINANCE")
 
-    # ── Spot ────────────────────────────────────────────────────────────────
-    data = get_json("https://api.binance.com/api/v3/exchangeInfo")
-    if data:
-        buckets = defaultdict(list)
-        for s in data["symbols"]:
-            if s["status"] != "TRADING":
-                continue
-            quote_cat = categorise_quote(s["quoteAsset"])
-            tv_sym = build_tv_symbol("BINANCE", s["symbol"])
-            buckets[quote_cat].append(tv_sym)
-        for cat, syms in buckets.items():
-            write_watchlist("binance", "spot", cat, syms)
+    # CCXT fetches binance.com with proper headers — no geo-block issues
+    markets = load_markets("binance", options={
+        "defaultType": "spot",
+        "fetchMarkets": ["spot", "linear", "inverse"],
+    })
+    if not markets:
+        return
 
-    # ── USDT-M Futures (linear perps + dated) ───────────────────────────────
-    data = get_json("https://fapi.binance.com/fapi/v1/exchangeInfo")
-    if data:
-        perp_buckets  = defaultdict(list)
-        dated_buckets = defaultdict(list)
-        for s in data["symbols"]:
-            if s["status"] != "TRADING":
-                continue
-            quote_cat   = categorise_quote(s["quoteAsset"])
-            tv_sym      = build_tv_symbol("BINANCE", s["symbol"])
-            c_type      = s.get("contractType", "")
-            if c_type == "PERPETUAL":
-                perp_buckets[quote_cat].append(tv_sym)
-            elif c_type in ("CURRENT_QUARTER", "NEXT_QUARTER", "CURRENT_MONTH", "NEXT_MONTH"):
-                dated_buckets[quote_cat].append(tv_sym)
-        for cat, syms in perp_buckets.items():
-            write_watchlist("binance", "perp_usdtm", cat, syms)
-        for cat, syms in dated_buckets.items():
-            write_watchlist("binance", "futures_usdtm", cat, syms)
+    buckets = defaultdict(lambda: defaultdict(list))
 
-    # ── Coin-M (inverse — settled in base asset) ────────────────────────────
-    data = get_json("https://dapi.binance.com/dapi/v1/exchangeInfo")
-    if data:
-        perp_buckets  = defaultdict(list)
-        dated_buckets = defaultdict(list)
-        for s in data["symbols"]:
-            if s["contractStatus"] != "TRADING":
-                continue
-            # Coin-M: categorise by BASE asset (settlement coin)
-            base_cat = s["baseAsset"].upper()
-            tv_sym   = build_tv_symbol("BINANCE", s["symbol"])
-            c_type   = s.get("contractType", "")
-            if c_type == "PERPETUAL":
-                perp_buckets[base_cat.lower()].append(tv_sym)
-            else:
-                dated_buckets[base_cat.lower()].append(tv_sym)
-        for cat, syms in perp_buckets.items():
-            write_watchlist("binance", "perp_coinm", cat, syms)
-        for cat, syms in dated_buckets.items():
-            write_watchlist("binance", "futures_coinm", cat, syms)
+    for symbol, m in markets.items():
+        if not is_active(m):
+            continue
+        base  = m.get("base", "")
+        quote = m.get("quote", "")
+        settle= m.get("settle", quote)
+        mtype = market_type(m)
+        qcat  = categorise_quote(quote)
+
+        # Build TV symbol — CCXT uses BASE/QUOTE:SETTLE format
+        raw = m.get("id", symbol)
+        tvsym = tv_symbol("binance", base, quote, raw)
+
+        if mtype == "spot":
+            buckets["spot"][qcat].append(tvsym)
+        elif mtype == "perp_linear":
+            buckets["perp_usdtm"][categorise_quote(settle)].append(tvsym)
+        elif mtype == "perp_inverse":
+            # Coin-M: categorise by base asset (settlement coin)
+            buckets["perp_coinm"][base.lower()].append(tvsym)
+        elif mtype == "futures_linear":
+            buckets["futures_usdtm"][categorise_quote(settle)].append(tvsym)
+        elif mtype == "futures_inverse":
+            buckets["futures_coinm"][base.lower()].append(tvsym)
+
+    for mkt, cats in buckets.items():
+        for cat, syms in cats.items():
+            write_watchlist("binance", mkt, cat, syms)
 
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -120,76 +146,41 @@ def fetch_binance():
 # ════════════════════════════════════════════════════════════════════════════
 def fetch_bybit():
     print("\n📥 BYBIT")
-    BASE = "https://api.bybit.com/v5/market/instruments-info"
 
-    category_map = {
-        "spot":    ("spot",    "spot"),
-        "linear":  ("linear",  "perp_linear"),   # USDT/USDC perps + dated
-        "inverse": ("inverse", "perp_inverse"),   # coin-margined
-        "option":  ("option",  "options"),
-    }
+    markets = load_markets("bybit", options={
+        "fetchMarkets": ["spot", "linear", "inverse", "option"],
+    })
+    if not markets:
+        return
 
-    for cat_param, (_, market_label) in category_map.items():
-        cursor = None
-        all_symbols = []
-        while True:
-            params = {"category": cat_param, "limit": 1000}
-            if cursor:
-                params["cursor"] = cursor
-            data = get_json(BASE, params=params)
-            if not data or data.get("retCode") != 0:
-                break
-            items = data["result"].get("list", [])
-            all_symbols.extend(items)
-            cursor = data["result"].get("nextPageCursor")
-            if not cursor:
-                break
+    buckets = defaultdict(lambda: defaultdict(list))
 
-        buckets       = defaultdict(list)
-        perp_buckets  = defaultdict(list)
-        dated_buckets = defaultdict(list)
+    for symbol, m in markets.items():
+        if not is_active(m):
+            continue
+        base   = m.get("base", "")
+        quote  = m.get("quote", "")
+        settle = m.get("settle", quote)
+        mtype  = market_type(m)
+        raw    = m.get("id", symbol)
+        tvsym  = tv_symbol("bybit", base, quote, raw)
 
-        for s in all_symbols:
-            status = s.get("status", s.get("lotSizeFilter", {}).get("status", ""))
-            # Bybit uses "Trading" for active
-            if s.get("status", "Trading") not in ("Trading", ""):
-                pass  # include all for now; Bybit status field varies
+        if mtype == "spot":
+            buckets["spot"][categorise_quote(quote)].append(tvsym)
+        elif mtype == "perp_linear":
+            buckets["perp_linear"][categorise_quote(settle)].append(tvsym)
+        elif mtype == "perp_inverse":
+            buckets["perp_inverse"][base.lower()].append(tvsym)
+        elif mtype == "futures_linear":
+            buckets["futures_linear"][categorise_quote(settle)].append(tvsym)
+        elif mtype == "futures_inverse":
+            buckets["futures_inverse"][base.lower()].append(tvsym)
+        elif mtype == "option":
+            buckets["options"][categorise_quote(settle)].append(tvsym)
 
-            symbol = s.get("symbol", "")
-            tv_sym = build_tv_symbol("BYBIT", symbol)
-
-            if cat_param == "spot":
-                quote = s.get("quoteCoin", "")
-                buckets[categorise_quote(quote)].append(tv_sym)
-
-            elif cat_param == "linear":
-                quote    = s.get("settleCoin", s.get("quoteCoin", "USDT"))
-                c_type   = s.get("contractType", "LinearPerpetual")
-                cat_name = categorise_quote(quote)
-                if "Perpetual" in c_type:
-                    perp_buckets[cat_name].append(tv_sym)
-                else:
-                    dated_buckets[cat_name].append(tv_sym)
-
-            elif cat_param == "inverse":
-                base     = s.get("baseCoin", "BTC")
-                c_type   = s.get("contractType", "InversePerpetual")
-                cat_name = base.lower()
-                if "Perpetual" in c_type:
-                    perp_buckets[cat_name].append(tv_sym)
-                else:
-                    dated_buckets[cat_name].append(tv_sym)
-
-            elif cat_param == "option":
-                settle = s.get("settleCoin", "USDC")
-                buckets[categorise_quote(settle)].append(tv_sym)
-
-        for cat, syms in buckets.items():
-            write_watchlist("bybit", market_label, cat, syms)
-        for cat, syms in perp_buckets.items():
-            write_watchlist("bybit", f"{market_label}_perp", cat, syms)
-        for cat, syms in dated_buckets.items():
-            write_watchlist("bybit", f"{market_label}_dated", cat, syms)
+    for mkt, cats in buckets.items():
+        for cat, syms in cats.items():
+            write_watchlist("bybit", mkt, cat, syms)
 
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -197,58 +188,39 @@ def fetch_bybit():
 # ════════════════════════════════════════════════════════════════════════════
 def fetch_okx():
     print("\n📥 OKX")
-    BASE = "https://www.okx.com/api/v5/public/instruments"
 
-    inst_types = {
-        "SPOT":    "spot",
-        "SWAP":    "perp",      # perpetuals
-        "FUTURES": "futures",   # dated
-        "OPTION":  "options",
-    }
+    markets = load_markets("okx")
+    if not markets:
+        return
 
-    for inst_type, market_label in inst_types.items():
-        data = get_json(BASE, params={"instType": inst_type})
-        if not data or data.get("code") != "0":
+    buckets = defaultdict(lambda: defaultdict(list))
+
+    for symbol, m in markets.items():
+        if not is_active(m):
             continue
+        base   = m.get("base", "")
+        quote  = m.get("quote", "")
+        settle = m.get("settle", quote)
+        mtype  = market_type(m)
+        raw    = m.get("id", symbol)
+        tvsym  = tv_symbol("okx", base, quote, raw)
 
-        buckets = defaultdict(list)
-        for s in data["data"]:
-            if s.get("state") != "live":
-                continue
+        if mtype == "spot":
+            buckets["spot"][categorise_quote(quote)].append(tvsym)
+        elif mtype == "perp_linear":
+            buckets["perp_linear"][categorise_quote(settle)].append(tvsym)
+        elif mtype == "perp_inverse":
+            buckets["perp_inverse"][base.lower()].append(tvsym)
+        elif mtype == "futures_linear":
+            buckets["futures_linear"][categorise_quote(settle)].append(tvsym)
+        elif mtype == "futures_inverse":
+            buckets["futures_inverse"][base.lower()].append(tvsym)
+        elif mtype == "option":
+            buckets["options"][categorise_quote(settle)].append(tvsym)
 
-            inst_id  = s["instId"]   # e.g. BTC-USDT-SWAP
-            tv_sym   = build_tv_symbol("OKX", inst_id.replace("-", ""))
-
-            if inst_type == "SPOT":
-                quote = s.get("quoteCcy", "")
-                buckets[categorise_quote(quote)].append(tv_sym)
-
-            elif inst_type in ("SWAP", "FUTURES"):
-                settle   = s.get("settleCcy", "")
-                ct_type  = s.get("ctType", "linear")   # linear / inverse
-                sub_cat  = categorise_quote(settle) if ct_type == "linear" else s.get("ctValCcy", settle).lower()
-                label    = f"{market_label}_{ct_type}"
-                buckets[sub_cat].append(build_tv_symbol("OKX", inst_id.replace("-", "")))
-                # Override bucket key with full label
-                buckets[f"{sub_cat}|{label}"].append(build_tv_symbol("OKX", inst_id.replace("-", "")))
-
-            elif inst_type == "OPTION":
-                settle = s.get("settleCcy", "")
-                buckets[categorise_quote(settle)].append(tv_sym)
-
-        # For SWAP/FUTURES we stored both simple and labeled; write labeled
-        if inst_type in ("SWAP", "FUTURES"):
-            label_buckets = defaultdict(list)
-            for key, syms in buckets.items():
-                if "|" in key:
-                    sub_cat, label = key.split("|", 1)
-                    label_buckets[(label, sub_cat)].extend(syms)
-            for (label, sub_cat), syms in label_buckets.items():
-                write_watchlist("okx", label, sub_cat, syms)
-        else:
-            for cat, syms in buckets.items():
-                if "|" not in cat:
-                    write_watchlist("okx", market_label, cat, syms)
+    for mkt, cats in buckets.items():
+        for cat, syms in cats.items():
+            write_watchlist("okx", mkt, cat, syms)
 
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -257,48 +229,34 @@ def fetch_okx():
 def fetch_bitget():
     print("\n📥 BITGET")
 
-    # ── Spot ────────────────────────────────────────────────────────────────
-    data = get_json("https://api.bitget.com/api/v2/spot/public/symbols")
-    if data and data.get("code") == "00000":
-        buckets = defaultdict(list)
-        for s in data["data"]:
-            if s.get("status") != "online":
-                continue
-            quote = s.get("quoteCoin", "")
-            tv_sym = build_tv_symbol("BITGET", s["symbol"])
-            buckets[categorise_quote(quote)].append(tv_sym)
-        for cat, syms in buckets.items():
-            write_watchlist("bitget", "spot", cat, syms)
+    markets = load_markets("bitget")
+    if not markets:
+        return
 
-    # ── Futures (mix) ────────────────────────────────────────────────────────
-    product_types = {
-        "usdt-futures":  ("perp_linear", "usdt"),
-        "usdc-futures":  ("perp_linear", "usdc"),
-        "coin-futures":  ("perp_coinm",  None),      # base asset varies
-        "susdt-futures": ("perp_demo",   "usdt"),     # demo/simulated — optional
-    }
+    buckets = defaultdict(lambda: defaultdict(list))
 
-    for product_type, (market_label, forced_cat) in product_types.items():
-        data = get_json(
-            "https://api.bitget.com/api/v2/mix/market/contracts",
-            params={"productType": product_type}
-        )
-        if not data or data.get("code") != "00000":
+    for symbol, m in markets.items():
+        if not is_active(m):
             continue
-        buckets = defaultdict(list)
-        for s in data["data"]:
-            if s.get("symbolStatus") not in ("normal", ""):
-                continue
-            tv_sym = build_tv_symbol("BITGET", s["symbol"])
-            if forced_cat:
-                cat = forced_cat
-            else:
-                # coin-margined: categorise by base/settle coin
-                settle = s.get("settleCoin", s.get("baseCoin", "BTC"))
-                cat    = settle.lower()
-            buckets[cat].append(tv_sym)
-        for cat, syms in buckets.items():
-            write_watchlist("bitget", market_label, cat, syms)
+        base   = m.get("base", "")
+        quote  = m.get("quote", "")
+        settle = m.get("settle", quote)
+        mtype  = market_type(m)
+        raw    = m.get("id", symbol)
+        tvsym  = tv_symbol("bitget", base, quote, raw)
+
+        if mtype == "spot":
+            buckets["spot"][categorise_quote(quote)].append(tvsym)
+        elif mtype == "perp_linear":
+            buckets["perp_linear"][categorise_quote(settle)].append(tvsym)
+        elif mtype == "perp_inverse":
+            buckets["perp_inverse"][base.lower()].append(tvsym)
+        elif mtype in ("futures_linear", "futures_inverse"):
+            buckets[mtype][categorise_quote(settle)].append(tvsym)
+
+    for mkt, cats in buckets.items():
+        for cat, syms in cats.items():
+            write_watchlist("bitget", mkt, cat, syms)
 
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -307,47 +265,32 @@ def fetch_bitget():
 def fetch_kraken():
     print("\n📥 KRAKEN")
 
-    # ── Spot ────────────────────────────────────────────────────────────────
-    data = get_json("https://api.kraken.com/0/public/AssetPairs")
-    if data and not data.get("error"):
-        buckets = defaultdict(list)
-        for pair_name, s in data["result"].items():
-            if s.get("status") != "online":
-                continue
-            # Use wsname for cleaner symbol e.g. XBT/USD
-            wsname = s.get("wsname", pair_name)
-            # Build TV symbol — Kraken uses KRAKEN prefix on TradingView
-            tv_sym = build_tv_symbol("KRAKEN", wsname.replace("/", ""))
-            quote  = s.get("quote", "")
-            # Kraken uses Z prefix for fiat (ZUSD, ZEUR) and X for crypto (XXBT)
-            clean_quote = quote.lstrip("XZ")
-            # Map XBT → BTC
-            if clean_quote == "XBT": clean_quote = "BTC"
-            buckets[categorise_quote(clean_quote)].append(tv_sym)
-        for cat, syms in buckets.items():
-            write_watchlist("kraken", "spot", cat, syms)
+    markets = load_markets("kraken")
+    if not markets:
+        return
 
-    # ── Kraken Futures ───────────────────────────────────────────────────────
-    data = get_json("https://futures.kraken.com/derivatives/api/v3/instruments")
-    if data and data.get("result") == "success":
-        perp_buckets  = defaultdict(list)
-        dated_buckets = defaultdict(list)
-        for s in data.get("instruments", []):
-            if not s.get("tradeable"):
-                continue
-            symbol  = s.get("symbol", "")
-            tv_sym  = build_tv_symbol("KRAKEN", symbol.upper())
-            quote   = s.get("marginCurrency", "USD")
-            cat     = categorise_quote(quote)
-            f_type  = s.get("type", "")
-            if "perpetual" in f_type.lower() or symbol.startswith("PF_"):
-                perp_buckets[cat].append(tv_sym)
-            else:
-                dated_buckets[cat].append(tv_sym)
-        for cat, syms in perp_buckets.items():
-            write_watchlist("kraken", "perp", cat, syms)
-        for cat, syms in dated_buckets.items():
-            write_watchlist("kraken", "futures", cat, syms)
+    buckets = defaultdict(lambda: defaultdict(list))
+
+    for symbol, m in markets.items():
+        if not is_active(m):
+            continue
+        base  = m.get("base", "")
+        quote = m.get("quote", "")
+        mtype = market_type(m)
+        raw   = m.get("id", symbol)
+        tvsym = tv_symbol("kraken", base, quote, raw)
+        qcat  = categorise_quote(quote)
+
+        if mtype == "spot":
+            buckets["spot"][qcat].append(tvsym)
+        elif mtype in ("perp_linear", "perp_inverse"):
+            buckets["perp"][qcat].append(tvsym)
+        elif mtype in ("futures_linear", "futures_inverse"):
+            buckets["futures"][qcat].append(tvsym)
+
+    for mkt, cats in buckets.items():
+        for cat, syms in cats.items():
+            write_watchlist("kraken", mkt, cat, syms)
 
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -356,39 +299,43 @@ def fetch_kraken():
 def fetch_kucoin():
     print("\n📥 KUCOIN")
 
-    # ── Spot ────────────────────────────────────────────────────────────────
-    data = get_json("https://api.kucoin.com/api/v1/symbols")
-    if data and data.get("code") == "200000":
+    # KuCoin spot
+    markets_spot = load_markets("kucoin")
+    if markets_spot:
         buckets = defaultdict(list)
-        for s in data["data"]:
-            if not s.get("enableTrading"):
+        for symbol, m in markets_spot.items():
+            if not is_active(m) or market_type(m) != "spot":
                 continue
-            quote  = s.get("quoteCurrency", "")
-            tv_sym = build_tv_symbol("KUCOIN", s["symbol"].replace("-", ""))
-            buckets[categorise_quote(quote)].append(tv_sym)
+            base  = m.get("base", "")
+            quote = m.get("quote", "")
+            raw   = m.get("id", symbol)
+            tvsym = tv_symbol("kucoin", base, quote, raw)
+            buckets[categorise_quote(quote)].append(tvsym)
         for cat, syms in buckets.items():
             write_watchlist("kucoin", "spot", cat, syms)
 
-    # ── KuCoin Futures ───────────────────────────────────────────────────────
-    data = get_json("https://api-futures.kucoin.com/api/v1/contracts/active")
-    if data and data.get("code") == "200000":
-        perp_buckets  = defaultdict(list)
-        dated_buckets = defaultdict(list)
-        for s in data["data"]:
-            if s.get("status") != "Open":
+    # KuCoin Futures (separate exchange instance)
+    markets_fut = load_markets("kucoinfutures")
+    if markets_fut:
+        perp_b  = defaultdict(list)
+        dated_b = defaultdict(list)
+        for symbol, m in markets_fut.items():
+            if not is_active(m):
                 continue
-            settle  = s.get("settleCurrency", "USDT")
-            symbol  = s.get("symbol", "")
-            tv_sym  = build_tv_symbol("KUCOIN", symbol)
-            cat     = categorise_quote(settle)
-            # KuCoin: expireDate is None for perps
-            if s.get("expireDate") is None:
-                perp_buckets[cat].append(tv_sym)
+            base   = m.get("base", "")
+            quote  = m.get("quote", "")
+            settle = m.get("settle", quote)
+            raw    = m.get("id", symbol)
+            tvsym  = tv_symbol("kucoin", base, quote, raw)
+            cat    = categorise_quote(settle)
+            mtype  = market_type(m)
+            if "perp" in mtype or m.get("swap"):
+                perp_b[cat].append(tvsym)
             else:
-                dated_buckets[cat].append(tv_sym)
-        for cat, syms in perp_buckets.items():
+                dated_b[cat].append(tvsym)
+        for cat, syms in perp_b.items():
             write_watchlist("kucoin", "perp", cat, syms)
-        for cat, syms in dated_buckets.items():
+        for cat, syms in dated_b.items():
             write_watchlist("kucoin", "futures", cat, syms)
 
 
@@ -396,8 +343,7 @@ def fetch_kucoin():
 # SUMMARY
 # ════════════════════════════════════════════════════════════════════════════
 def print_summary():
-    total_files   = 0
-    total_symbols = 0
+    total_files = total_syms = 0
     print("\n" + "═" * 60)
     print("📊  SUMMARY")
     print("═" * 60)
@@ -405,21 +351,19 @@ def print_summary():
         exc_path = os.path.join(OUTPUT_DIR, exchange)
         if not os.path.isdir(exc_path):
             continue
-        exc_files = 0
-        exc_syms  = 0
+        ef = es = 0
         for root, _, files in os.walk(exc_path):
             for f in files:
                 if f.endswith(".txt"):
-                    fpath = os.path.join(root, f)
-                    with open(fpath) as fh:
+                    with open(os.path.join(root, f)) as fh:
                         lines = [l.strip() for l in fh if l.strip()]
-                    exc_files  += 1
-                    exc_syms   += len(lines)
-        print(f"  {exchange.upper():<10}  {exc_files:>3} files   {exc_syms:>5} symbols")
-        total_files   += exc_files
-        total_symbols += exc_syms
+                    ef += 1
+                    es += len(lines)
+        print(f"  {exchange.upper():<12}  {ef:>3} files   {es:>6} symbols")
+        total_files += ef
+        total_syms  += es
     print("─" * 60)
-    print(f"  {'TOTAL':<10}  {total_files:>3} files   {total_symbols:>5} symbols")
+    print(f"  {'TOTAL':<12}  {total_files:>3} files   {total_syms:>6} symbols")
     print("═" * 60)
 
 
