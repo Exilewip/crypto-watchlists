@@ -1,0 +1,659 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Crypto Watchlists for TradingView</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=DM+Sans:wght@300;400;600&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:        #0a0a0f;
+      --surface:   #111118;
+      --border:    #1e1e2e;
+      --text:      #e2e2f0;
+      --muted:     #6b6b8a;
+      --accent:    #7c6af7;
+      --accent2:   #f7c96a;
+      --radius:    10px;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'DM Sans', sans-serif;
+      min-height: 100vh;
+      padding: 0 0 80px;
+    }
+
+    /* ── Hero ── */
+    .hero {
+      padding: 64px 24px 48px;
+      text-align: center;
+      background: radial-gradient(ellipse 80% 60% at 50% 0%, #1a1040 0%, transparent 70%);
+      border-bottom: 1px solid var(--border);
+    }
+    .hero-eyebrow {
+      font-family: 'Space Mono', monospace;
+      font-size: 11px;
+      letter-spacing: 3px;
+      color: var(--accent);
+      text-transform: uppercase;
+      margin-bottom: 16px;
+    }
+    .hero h1 {
+      font-size: clamp(28px, 5vw, 52px);
+      font-weight: 600;
+      line-height: 1.1;
+      margin-bottom: 16px;
+    }
+    .hero h1 em {
+      font-style: normal;
+      color: var(--accent2);
+    }
+    .hero-sub {
+      color: var(--muted);
+      font-size: 16px;
+      max-width: 520px;
+      margin: 0 auto 32px;
+      line-height: 1.6;
+    }
+    .hero-stats {
+      display: inline-flex;
+      gap: 32px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 50px;
+      padding: 12px 28px;
+      font-family: 'Space Mono', monospace;
+      font-size: 13px;
+    }
+    .hero-stats span { color: var(--accent2); }
+
+    /* ── How to use ── */
+    .howto {
+      max-width: 860px;
+      margin: 40px auto;
+      padding: 0 24px;
+    }
+    .howto-steps {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 16px;
+    }
+    .step {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 20px;
+    }
+    .step-num {
+      font-family: 'Space Mono', monospace;
+      font-size: 11px;
+      color: var(--accent);
+      margin-bottom: 8px;
+    }
+    .step p { font-size: 14px; color: var(--muted); line-height: 1.5; }
+    .step strong { color: var(--text); }
+
+    /* ── Grid ── */
+    .grid {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 0 24px;
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+      gap: 20px;
+    }
+
+    /* ── Card ── */
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      overflow: hidden;
+    }
+    .card-header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 16px 20px;
+      background: #0d0d14;
+    }
+    .card-emoji  { font-size: 18px; }
+    .card-title  { font-weight: 600; font-size: 17px; flex: 1; }
+    .card-stats  { font-family: 'Space Mono', monospace; font-size: 10px; color: var(--muted); }
+
+    .card-body { padding: 12px 16px; display: flex; flex-direction: column; gap: 12px; }
+
+    .market-name {
+      font-family: 'Space Mono', monospace;
+      font-size: 10px;
+      letter-spacing: 1px;
+      color: var(--muted);
+      text-transform: uppercase;
+      margin-bottom: 8px;
+    }
+    .badges { display: flex; flex-wrap: wrap; gap: 8px; }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      background: #16161f;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 6px 10px;
+      font-size: 13px;
+      text-decoration: none;
+      color: var(--text);
+      transition: all .15s ease;
+      cursor: pointer;
+    }
+    .badge:hover {
+      border-color: var(--accent);
+      background: #1c1a30;
+      transform: translateY(-1px);
+    }
+    .badge-quote { font-weight: 600; }
+    .badge-count {
+      font-family: 'Space Mono', monospace;
+      font-size: 11px;
+      color: var(--muted);
+    }
+    .badge-dl { color: var(--accent2); font-size: 12px; }
+
+    /* ── Footer ── */
+    .footer {
+      text-align: center;
+      margin-top: 60px;
+      font-family: 'Space Mono', monospace;
+      font-size: 11px;
+      color: var(--muted);
+    }
+    .updated { color: var(--accent); }
+  </style>
+</head>
+<body>
+
+<div class="hero">
+  <div class="hero-eyebrow">Free · Updated daily · TradingView ready</div>
+  <h1>Crypto Watchlists<br>for <em>TradingView</em></h1>
+  <p class="hero-sub">Download ready-to-import watchlists for every major exchange — Spot, Perpetuals, Futures, Coin-M — sorted by quote currency.</p>
+  <div class="hero-stats">
+    70 watchlists &nbsp;·&nbsp; <span>6,276</span> symbols &nbsp;·&nbsp; 6 exchanges
+  </div>
+</div>
+
+<div class="howto">
+  <div class="howto-steps">
+    <div class="step">
+      <div class="step-num">01 — DOWNLOAD</div>
+      <p><strong>Click any badge</strong> below to download the <strong>.txt</strong> watchlist file you need.</p>
+    </div>
+    <div class="step">
+      <div class="step-num">02 — IMPORT</div>
+      <p>In TradingView, open the <strong>Watchlist panel</strong>, click ··· → <strong>Import watchlist</strong>.</p>
+    </div>
+    <div class="step">
+      <div class="step-num">03 — TRADE</div>
+      <p>Your watchlist is instantly populated with all <strong>active symbols</strong> from that exchange.</p>
+    </div>
+  </div>
+</div>
+
+<div class="grid">
+  
+        <div class="card">
+          <div class="card-header" style="border-left: 4px solid #00C5CE">
+            <span class="card-emoji">🔵</span>
+            <span class="card-title">Bitget</span>
+            <span class="card-stats">32 lists · 1,350 symbols</span>
+          </div>
+          <div class="card-body">
+            <div class="market">
+              <div class="market-name">Perp Coin-M</div>
+              <div class="badges">
+                <a href="watchlists/bitget/perp_coinm/bitget_perp_coinm_aave.txt" download class="badge" title="Download AAVE watchlist (1 symbols)">
+                  <span class="badge-quote">AAVE</span>
+                  <span class="badge-count">1</span>
+                  <span class="badge-dl">↓</span>
+                </a>
+                <a href="watchlists/bitget/perp_coinm/bitget_perp_coinm_ada.txt" download class="badge" title="Download ADA watchlist (1 symbols)">
+                  <span class="badge-quote">ADA</span>
+                  <span class="badge-count">1</span>
+                  <span class="badge-dl">↓</span>
+                </a>
+                <a href="watchlists/bitget/perp_coinm/bitget_perp_coinm_apt.txt" download class="badge" title="Download APT watchlist (1 symbols)">
+                  <span class="badge-quote">APT</span>
+                  <span class="badge-count">1</span>
+                  <span class="badge-dl">↓</span>
+                </a>
+                <a href="watchlists/bitget/perp_coinm/bitget_perp_coinm_avax.txt" download class="badge" title="Download AVAX watchlist (1 symbols)">
+                  <span class="badge-quote">AVAX</span>
+                  <span class="badge-count">1</span>
+                  <span class="badge-dl">↓</span>
+                </a>
+                <a href="watchlists/bitget/perp_coinm/bitget_perp_coinm_bch.txt" download class="badge" title="Download BCH watchlist (1 symbols)">
+                  <span class="badge-quote">BCH</span>
+                  <span class="badge-count">1</span>
+                  <span class="badge-dl">↓</span>
+                </a>
+                <a href="watchlists/bitget/perp_coinm/bitget_perp_coinm_btc.txt" download class="badge" title="Download BTC watchlist (3 symbols)">
+                  <span class="badge-quote">BTC</span>
+                  <span class="badge-count">3</span>
+                  <span class="badge-dl">↓</span>
+                </a>
+                <a href="watchlists/bitget/perp_coinm/bitget_perp_coinm_doge.txt" download class="badge" title="Download DOGE watchlist (1 symbols)">
+                  <span class="badge-quote">DOGE</span>
+                  <span class="badge-count">1</span>
+                  <span class="badge-dl">↓</span>
+                </a>
+                <a href="watchlists/bitget/perp_coinm/bitget_perp_coinm_dot.txt" download class="badge" title="Download DOT watchlist (1 symbols)">
+                  <span class="badge-quote">DOT</span>
+                  <span class="badge-count">1</span>
+                  <span class="badge-dl">↓</span>
+                </a>
+                <a href="watchlists/bitget/perp_coinm/bitget_perp_coinm_etc.txt" download class="badge" title="Download ETC watchlist (1 symbols)">
+                  <span class="badge-quote">ETC</span>
+                  <span class="badge-count">1</span>
+                  <span class="badge-dl">↓</span>
+                </a>
+                <a href="watchlists/bitget/perp_coinm/bitget_perp_coinm_eth.txt" download class="badge" title="Download ETH watchlist (3 symbols)">
+                  <span class="badge-quote">ETH</span>
+                  <span class="badge-count">3</span>
+                  <span class="badge-dl">↓</span>
+                </a>
+                <a href="watchlists/bitget/perp_coinm/bitget_perp_coinm_fil.txt" download class="badge" title="Download FIL watchlist (1 symbols)">
+                  <span class="badge-quote">FIL</span>
+                  <span class="badge-count">1</span>
+                  <span class="badge-dl">↓</span>
+                </a>
+                <a href="watchlists/bitget/perp_coinm/bitget_perp_coinm_link.txt" download class="badge" title="Download LINK watchlist (1 symbols)">
+                  <span class="badge-quote">LINK</span>
+                  <span class="badge-count">1</span>
+                  <span class="badge-dl">↓</span>
+                </a>
+                <a href="watchlists/bitget/perp_coinm/bitget_perp_coinm_ltc.txt" download class="badge" title="Download LTC watchlist (1 symbols)">
+                  <span class="badge-quote">LTC</span>
+                  <span class="badge-count">1</span>
+                  <span class="badge-dl">↓</span>
+                </a>
+                <a href="watchlists/bitget/perp_coinm/bitget_perp_coinm_near.txt" download class="badge" title="Download NEAR watchlist (1 symbols)">
+                  <span class="badge-quote">NEAR</span>
+                  <span class="badge-count">1</span>
+                  <span class="badge-dl">↓</span>
+                </a>
+                <a href="watchlists/bitget/perp_coinm/bitget_perp_coinm_op.txt" download class="badge" title="Download OP watchlist (1 symbols)">
+                  <span class="badge-quote">OP</span>
+                  <span class="badge-count">1</span>
+                  <span class="badge-dl">↓</span>
+                </a>
+                <a href="watchlists/bitget/perp_coinm/bitget_perp_coinm_sol.txt" download class="badge" title="Download SOL watchlist (1 symbols)">
+                  <span class="badge-quote">SOL</span>
+                  <span class="badge-count">1</span>
+                  <span class="badge-dl">↓</span>
+                </a>
+                <a href="watchlists/bitget/perp_coinm/bitget_perp_coinm_sui.txt" download class="badge" title="Download SUI watchlist (1 symbols)">
+                  <span class="badge-quote">SUI</span>
+                  <span class="badge-count">1</span>
+                  <span class="badge-dl">↓</span>
+                </a>
+                <a href="watchlists/bitget/perp_coinm/bitget_perp_coinm_trx.txt" download class="badge" title="Download TRX watchlist (1 symbols)">
+                  <span class="badge-quote">TRX</span>
+                  <span class="badge-count">1</span>
+                  <span class="badge-dl">↓</span>
+                </a>
+                <a href="watchlists/bitget/perp_coinm/bitget_perp_coinm_uni.txt" download class="badge" title="Download UNI watchlist (1 symbols)">
+                  <span class="badge-quote">UNI</span>
+                  <span class="badge-count">1</span>
+                  <span class="badge-dl">↓</span>
+                </a>
+                <a href="watchlists/bitget/perp_coinm/bitget_perp_coinm_wif.txt" download class="badge" title="Download WIF watchlist (1 symbols)">
+                  <span class="badge-quote">WIF</span>
+                  <span class="badge-count">1</span>
+                  <span class="badge-dl">↓</span>
+                </a>
+                <a href="watchlists/bitget/perp_coinm/bitget_perp_coinm_xlm.txt" download class="badge" title="Download XLM watchlist (1 symbols)">
+                  <span class="badge-quote">XLM</span>
+                  <span class="badge-count">1</span>
+                  <span class="badge-dl">↓</span>
+                </a>
+                <a href="watchlists/bitget/perp_coinm/bitget_perp_coinm_xrp.txt" download class="badge" title="Download XRP watchlist (1 symbols)">
+                  <span class="badge-quote">XRP</span>
+                  <span class="badge-count">1</span>
+                  <span class="badge-dl">↓</span>
+                </a></div>
+            </div>
+            <div class="market">
+              <div class="market-name">Perp Demo</div>
+              <div class="badges">
+                <a href="watchlists/bitget/perp_demo/bitget_perp_demo_usdt.txt" download class="badge" title="Download USDT watchlist (3 symbols)">
+                  <span class="badge-quote">USDT</span>
+                  <span class="badge-count">3</span>
+                  <span class="badge-dl">↓</span>
+                </a></div>
+            </div>
+            <div class="market">
+              <div class="market-name">Perp Linear</div>
+              <div class="badges">
+                <a href="watchlists/bitget/perp_linear/bitget_perp_linear_usdc.txt" download class="badge" title="Download USDC watchlist (54 symbols)">
+                  <span class="badge-quote">USDC</span>
+                  <span class="badge-count">54</span>
+                  <span class="badge-dl">↓</span>
+                </a>
+                <a href="watchlists/bitget/perp_linear/bitget_perp_linear_usdt.txt" download class="badge" title="Download USDT watchlist (539 symbols)">
+                  <span class="badge-quote">USDT</span>
+                  <span class="badge-count">539</span>
+                  <span class="badge-dl">↓</span>
+                </a></div>
+            </div>
+            <div class="market">
+              <div class="market-name">Spot</div>
+              <div class="badges">
+                <a href="watchlists/bitget/spot/bitget_spot_btc.txt" download class="badge" title="Download BTC watchlist (10 symbols)">
+                  <span class="badge-quote">BTC</span>
+                  <span class="badge-count">10</span>
+                  <span class="badge-dl">↓</span>
+                </a>
+                <a href="watchlists/bitget/spot/bitget_spot_eth.txt" download class="badge" title="Download ETH watchlist (4 symbols)">
+                  <span class="badge-quote">ETH</span>
+                  <span class="badge-count">4</span>
+                  <span class="badge-dl">↓</span>
+                </a>
+                <a href="watchlists/bitget/spot/bitget_spot_eur.txt" download class="badge" title="Download EUR watchlist (21 symbols)">
+                  <span class="badge-quote">EUR</span>
+                  <span class="badge-count">21</span>
+                  <span class="badge-dl">↓</span>
+                </a>
+                <a href="watchlists/bitget/spot/bitget_spot_other.txt" download class="badge" title="Download Other watchlist (16 symbols)">
+                  <span class="badge-quote">Other</span>
+                  <span class="badge-count">16</span>
+                  <span class="badge-dl">↓</span>
+                </a>
+                <a href="watchlists/bitget/spot/bitget_spot_usd.txt" download class="badge" title="Download USD watchlist (3 symbols)">
+                  <span class="badge-quote">USD</span>
+                  <span class="badge-count">3</span>
+                  <span class="badge-dl">↓</span>
+                </a>
+                <a href="watchlists/bitget/spot/bitget_spot_usdc.txt" download class="badge" title="Download USDC watchlist (40 symbols)">
+                  <span class="badge-quote">USDC</span>
+                  <span class="badge-count">40</span>
+                  <span class="badge-dl">↓</span>
+                </a>
+                <a href="watchlists/bitget/spot/bitget_spot_usdt.txt" download class="badge" title="Download USDT watchlist (634 symbols)">
+                  <span class="badge-quote">USDT</span>
+                  <span class="badge-count">634</span>
+                  <span class="badge-dl">↓</span>
+                </a></div>
+            </div></div>
+        </div>
+        <div class="card">
+          <div class="card-header" style="border-left: 4px solid #5741D9">
+            <span class="card-emoji">🟣</span>
+            <span class="card-title">Kraken</span>
+            <span class="card-stats">10 lists · 1,813 symbols</span>
+          </div>
+          <div class="card-body">
+            <div class="market">
+              <div class="market-name">Futures</div>
+              <div class="badges">
+                <a href="watchlists/kraken/futures/kraken_futures_usd.txt" download class="badge" title="Download USD watchlist (28 symbols)">
+                  <span class="badge-quote">USD</span>
+                  <span class="badge-count">28</span>
+                  <span class="badge-dl">↓</span>
+                </a></div>
+            </div>
+            <div class="market">
+              <div class="market-name">Perpetuals</div>
+              <div class="badges">
+                <a href="watchlists/kraken/perp/kraken_perp_usd.txt" download class="badge" title="Download USD watchlist (319 symbols)">
+                  <span class="badge-quote">USD</span>
+                  <span class="badge-count">319</span>
+                  <span class="badge-dl">↓</span>
+                </a></div>
+            </div>
+            <div class="market">
+              <div class="market-name">Spot</div>
+              <div class="badges">
+                <a href="watchlists/kraken/spot/kraken_spot_aud.txt" download class="badge" title="Download AUD watchlist (14 symbols)">
+                  <span class="badge-quote">AUD</span>
+                  <span class="badge-count">14</span>
+                  <span class="badge-dl">↓</span>
+                </a>
+                <a href="watchlists/kraken/spot/kraken_spot_eth.txt" download class="badge" title="Download ETH watchlist (18 symbols)">
+                  <span class="badge-quote">ETH</span>
+                  <span class="badge-count">18</span>
+                  <span class="badge-dl">↓</span>
+                </a>
+                <a href="watchlists/kraken/spot/kraken_spot_eur.txt" download class="badge" title="Download EUR watchlist (593 symbols)">
+                  <span class="badge-quote">EUR</span>
+                  <span class="badge-count">593</span>
+                  <span class="badge-dl">↓</span>
+                </a>
+                <a href="watchlists/kraken/spot/kraken_spot_gbp.txt" download class="badge" title="Download GBP watchlist (27 symbols)">
+                  <span class="badge-quote">GBP</span>
+                  <span class="badge-count">27</span>
+                  <span class="badge-dl">↓</span>
+                </a>
+                <a href="watchlists/kraken/spot/kraken_spot_other.txt" download class="badge" title="Download Other watchlist (79 symbols)">
+                  <span class="badge-quote">Other</span>
+                  <span class="badge-count">79</span>
+                  <span class="badge-dl">↓</span>
+                </a>
+                <a href="watchlists/kraken/spot/kraken_spot_usd.txt" download class="badge" title="Download USD watchlist (642 symbols)">
+                  <span class="badge-quote">USD</span>
+                  <span class="badge-count">642</span>
+                  <span class="badge-dl">↓</span>
+                </a>
+                <a href="watchlists/kraken/spot/kraken_spot_usdc.txt" download class="badge" title="Download USDC watchlist (46 symbols)">
+                  <span class="badge-quote">USDC</span>
+                  <span class="badge-count">46</span>
+                  <span class="badge-dl">↓</span>
+                </a>
+                <a href="watchlists/kraken/spot/kraken_spot_usdt.txt" download class="badge" title="Download USDT watchlist (47 symbols)">
+                  <span class="badge-quote">USDT</span>
+                  <span class="badge-count">47</span>
+                  <span class="badge-dl">↓</span>
+                </a></div>
+            </div></div>
+        </div>
+        <div class="card">
+          <div class="card-header" style="border-left: 4px solid #23AF91">
+            <span class="card-emoji">🟢</span>
+            <span class="card-title">KuCoin</span>
+            <span class="card-stats">13 lists · 1,689 symbols</span>
+          </div>
+          <div class="card-body">
+            <div class="market">
+              <div class="market-name">Futures</div>
+              <div class="badges">
+                <a href="watchlists/kucoin/futures/kucoin_futures_other.txt" download class="badge" title="Download Other watchlist (2 symbols)">
+                  <span class="badge-quote">Other</span>
+                  <span class="badge-count">2</span>
+                  <span class="badge-dl">↓</span>
+                </a>
+                <a href="watchlists/kucoin/futures/kucoin_futures_usdt.txt" download class="badge" title="Download USDT watchlist (1 symbols)">
+                  <span class="badge-quote">USDT</span>
+                  <span class="badge-count">1</span>
+                  <span class="badge-dl">↓</span>
+                </a></div>
+            </div>
+            <div class="market">
+              <div class="market-name">Perpetuals</div>
+              <div class="badges">
+                <a href="watchlists/kucoin/perp/kucoin_perp_eth.txt" download class="badge" title="Download ETH watchlist (1 symbols)">
+                  <span class="badge-quote">ETH</span>
+                  <span class="badge-count">1</span>
+                  <span class="badge-dl">↓</span>
+                </a>
+                <a href="watchlists/kucoin/perp/kucoin_perp_other.txt" download class="badge" title="Download Other watchlist (6 symbols)">
+                  <span class="badge-quote">Other</span>
+                  <span class="badge-count">6</span>
+                  <span class="badge-dl">↓</span>
+                </a>
+                <a href="watchlists/kucoin/perp/kucoin_perp_usdc.txt" download class="badge" title="Download USDC watchlist (7 symbols)">
+                  <span class="badge-quote">USDC</span>
+                  <span class="badge-count">7</span>
+                  <span class="badge-dl">↓</span>
+                </a>
+                <a href="watchlists/kucoin/perp/kucoin_perp_usdt.txt" download class="badge" title="Download USDT watchlist (549 symbols)">
+                  <span class="badge-quote">USDT</span>
+                  <span class="badge-count">549</span>
+                  <span class="badge-dl">↓</span>
+                </a></div>
+            </div>
+            <div class="market">
+              <div class="market-name">Spot</div>
+              <div class="badges">
+                <a href="watchlists/kucoin/spot/kucoin_spot_btc.txt" download class="badge" title="Download BTC watchlist (70 symbols)">
+                  <span class="badge-quote">BTC</span>
+                  <span class="badge-count">70</span>
+                  <span class="badge-dl">↓</span>
+                </a>
+                <a href="watchlists/kucoin/spot/kucoin_spot_eth.txt" download class="badge" title="Download ETH watchlist (33 symbols)">
+                  <span class="badge-quote">ETH</span>
+                  <span class="badge-count">33</span>
+                  <span class="badge-dl">↓</span>
+                </a>
+                <a href="watchlists/kucoin/spot/kucoin_spot_eur.txt" download class="badge" title="Download EUR watchlist (4 symbols)">
+                  <span class="badge-quote">EUR</span>
+                  <span class="badge-count">4</span>
+                  <span class="badge-dl">↓</span>
+                </a>
+                <a href="watchlists/kucoin/spot/kucoin_spot_kcs.txt" download class="badge" title="Download KCS watchlist (10 symbols)">
+                  <span class="badge-quote">KCS</span>
+                  <span class="badge-count">10</span>
+                  <span class="badge-dl">↓</span>
+                </a>
+                <a href="watchlists/kucoin/spot/kucoin_spot_other.txt" download class="badge" title="Download Other watchlist (21 symbols)">
+                  <span class="badge-quote">Other</span>
+                  <span class="badge-count">21</span>
+                  <span class="badge-dl">↓</span>
+                </a>
+                <a href="watchlists/kucoin/spot/kucoin_spot_usdc.txt" download class="badge" title="Download USDC watchlist (62 symbols)">
+                  <span class="badge-quote">USDC</span>
+                  <span class="badge-count">62</span>
+                  <span class="badge-dl">↓</span>
+                </a>
+                <a href="watchlists/kucoin/spot/kucoin_spot_usdt.txt" download class="badge" title="Download USDT watchlist (923 symbols)">
+                  <span class="badge-quote">USDT</span>
+                  <span class="badge-count">923</span>
+                  <span class="badge-dl">↓</span>
+                </a></div>
+            </div></div>
+        </div>
+        <div class="card">
+          <div class="card-header" style="border-left: 4px solid #FFFFFF">
+            <span class="card-emoji">⚪</span>
+            <span class="card-title">OKX</span>
+            <span class="card-stats">15 lists · 1,424 symbols</span>
+          </div>
+          <div class="card-body">
+            <div class="market">
+              <div class="market-name">Futures Inverse</div>
+              <div class="badges">
+                <a href="watchlists/okx/futures_inverse/okx_futures_inverse_usd.txt" download class="badge" title="Download USD watchlist (12 symbols)">
+                  <span class="badge-quote">USD</span>
+                  <span class="badge-count">12</span>
+                  <span class="badge-dl">↓</span>
+                </a></div>
+            </div>
+            <div class="market">
+              <div class="market-name">Futures Linear</div>
+              <div class="badges">
+                <a href="watchlists/okx/futures_linear/okx_futures_linear_usd.txt" download class="badge" title="Download USD watchlist (8 symbols)">
+                  <span class="badge-quote">USD</span>
+                  <span class="badge-count">8</span>
+                  <span class="badge-dl">↓</span>
+                </a>
+                <a href="watchlists/okx/futures_linear/okx_futures_linear_usdt.txt" download class="badge" title="Download USDT watchlist (4 symbols)">
+                  <span class="badge-quote">USDT</span>
+                  <span class="badge-count">4</span>
+                  <span class="badge-dl">↓</span>
+                </a></div>
+            </div>
+            <div class="market">
+              <div class="market-name">Perp Inverse</div>
+              <div class="badges">
+                <a href="watchlists/okx/perp_inverse/okx_perp_inverse_usd.txt" download class="badge" title="Download USD watchlist (15 symbols)">
+                  <span class="badge-quote">USD</span>
+                  <span class="badge-count">15</span>
+                  <span class="badge-dl">↓</span>
+                </a></div>
+            </div>
+            <div class="market">
+              <div class="market-name">Perp Linear</div>
+              <div class="badges">
+                <a href="watchlists/okx/perp_linear/okx_perp_linear_usd.txt" download class="badge" title="Download USD watchlist (4 symbols)">
+                  <span class="badge-quote">USD</span>
+                  <span class="badge-count">4</span>
+                  <span class="badge-dl">↓</span>
+                </a>
+                <a href="watchlists/okx/perp_linear/okx_perp_linear_usdt.txt" download class="badge" title="Download USDT watchlist (281 symbols)">
+                  <span class="badge-quote">USDT</span>
+                  <span class="badge-count">281</span>
+                  <span class="badge-dl">↓</span>
+                </a></div>
+            </div>
+            <div class="market">
+              <div class="market-name">Spot</div>
+              <div class="badges">
+                <a href="watchlists/okx/spot/okx_spot_aud.txt" download class="badge" title="Download AUD watchlist (7 symbols)">
+                  <span class="badge-quote">AUD</span>
+                  <span class="badge-count">7</span>
+                  <span class="badge-dl">↓</span>
+                </a>
+                <a href="watchlists/okx/spot/okx_spot_btc.txt" download class="badge" title="Download BTC watchlist (3 symbols)">
+                  <span class="badge-quote">BTC</span>
+                  <span class="badge-count">3</span>
+                  <span class="badge-dl">↓</span>
+                </a>
+                <a href="watchlists/okx/spot/okx_spot_eth.txt" download class="badge" title="Download ETH watchlist (2 symbols)">
+                  <span class="badge-quote">ETH</span>
+                  <span class="badge-count">2</span>
+                  <span class="badge-dl">↓</span>
+                </a>
+                <a href="watchlists/okx/spot/okx_spot_eur.txt" download class="badge" title="Download EUR watchlist (207 symbols)">
+                  <span class="badge-quote">EUR</span>
+                  <span class="badge-count">207</span>
+                  <span class="badge-dl">↓</span>
+                </a>
+                <a href="watchlists/okx/spot/okx_spot_other.txt" download class="badge" title="Download Other watchlist (18 symbols)">
+                  <span class="badge-quote">Other</span>
+                  <span class="badge-count">18</span>
+                  <span class="badge-dl">↓</span>
+                </a>
+                <a href="watchlists/okx/spot/okx_spot_try.txt" download class="badge" title="Download TRY watchlist (89 symbols)">
+                  <span class="badge-quote">TRY</span>
+                  <span class="badge-count">89</span>
+                  <span class="badge-dl">↓</span>
+                </a>
+                <a href="watchlists/okx/spot/okx_spot_usd.txt" download class="badge" title="Download USD watchlist (277 symbols)">
+                  <span class="badge-quote">USD</span>
+                  <span class="badge-count">277</span>
+                  <span class="badge-dl">↓</span>
+                </a>
+                <a href="watchlists/okx/spot/okx_spot_usdc.txt" download class="badge" title="Download USDC watchlist (204 symbols)">
+                  <span class="badge-quote">USDC</span>
+                  <span class="badge-count">204</span>
+                  <span class="badge-dl">↓</span>
+                </a>
+                <a href="watchlists/okx/spot/okx_spot_usdt.txt" download class="badge" title="Download USDT watchlist (293 symbols)">
+                  <span class="badge-quote">USDT</span>
+                  <span class="badge-count">293</span>
+                  <span class="badge-dl">↓</span>
+                </a></div>
+            </div></div>
+        </div>
+</div>
+
+<div class="footer">
+  <p>Updated automatically every day at 02:00 UTC &nbsp;·&nbsp; <span class="updated">Last run: 2026-03-19 22:17 UTC</span></p>
+  <p style="margin-top:8px">Data sourced from official public exchange APIs · Not financial advice</p>
+</div>
+
+</body>
+</html>
