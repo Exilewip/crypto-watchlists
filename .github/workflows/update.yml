@@ -2,8 +2,8 @@ name: Update Crypto Watchlists
 
 on:
   schedule:
-    - cron: '0 2 * * *'
-  workflow_dispatch:
+    - cron: '0 2 * * *'   # chaque nuit à 2h UTC
+  workflow_dispatch:        # bouton manuel dans GitHub
 
 permissions:
   contents: write
@@ -27,7 +27,7 @@ jobs:
           python-version: '3.11'
 
       - name: Install dependencies
-        run: pip install requests
+        run: pip install ccxt
 
       - name: Run watchlist fetcher
         run: python fetch_watchlists.py
@@ -41,7 +41,7 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add watchlists/ docs/
           git diff --staged --quiet || git commit -m "🔄 Update watchlists $(date +'%Y-%m-%d')"
-          git pull --rebase && git push
+          git push
 
       - name: Setup Pages
         uses: actions/configure-pages@v4
